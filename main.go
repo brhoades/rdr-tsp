@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"sort"
 	"strconv"
 
 	log "github.com/inconshreveable/log15"
@@ -91,7 +90,7 @@ func main() {
 			start := p.NodesByName[args[1]][0]
 			remainder := filterNodes([]*Node{start}, p.Graphs[0].Nodes)
 			log.Debug("Start nodes", "start", start)
-			path := findPath(p.NodesByName[args[1]], remainder, p, 0)
+			path, _ := findPath(p.NodesByName[args[1]], remainder, p, 0, 100000000)
 
 			for _, p := range path {
 				fmt.Println(p.Name)
@@ -101,33 +100,66 @@ func main() {
 	}).Execute()
 }
 
-func findPath(visited []*Node, options []*Node, p *ProblemGraph, day int) []*Node {
-	last := visited[len(visited)-1]
-
-	sort.Slice(options, func(i, j int) bool {
-		return distance(last, options[i]) < distance(last, options[j])
-	})
-
-	visited = append(visited, options[0])
-
-	if len(options) == 1 {
-		return visited
-	}
-
-	options = options[1:]
-
-	log.Debug("ITERATION", "visited", len(visited), "options", len(options))
+func findPath(visited []*Node, options []*Node, p *ProblemGraph, day int, lastBest float64) ([]*Node, float64) {
+	// log.Debug("CALL", "visited", len(visited), "options", len(options))
 	if len(visited)/18 >= day+1 && day != 2 {
 		log.Debug("Extra day...", "day", day)
 		day++
 		options = filterNodes(visited, p.Graphs[day].Nodes)
 	}
 
-	return findPath(visited, options, p, day)
+	var bestPath []*Node
+	var bestWeight float64 = 10000000
+
+	if len(options) == 1 {
+		visited = append(visited, options[0])
+		dist := totalDistance(visited)
+
+		// log.Debug("One option left, bottomed out.", "totalDistance", dist)
+		return visited, dist
+	}
+
+	var nVisited []*Node
+
+	for _, next := range options {
+		nVisited = append(visited[:], next)
+		if len(nVisited) > 1 {
+			// log.Debug("Evaluating next node", "nVisited", nVisited[len(nVisited)-1])
+		}
+
+		_, weight := findPath(nVisited, filterNodes(nVisited, options), p, day, bestWeight)
+		if weight < bestWeight {
+			bestWeight = weight
+			bestPath = nVisited
+		}
+	}
+
+	if bestWeight > lastBest {
+		return bestPath, bestWeight
+	}
+
+	// log.Debug("Found best for path.", "bestPath", bestPath, "bestWeight", bestWeight)
+	visited = bestPath
+	options = filterNodes(options, nVisited)
+
+	return visited, totalDistance(visited)
+}
+
+func totalDistance(path []*Node) float64 {
+	if len(path) < 2 {
+		return 0.0
+	}
+	sum := 0.0
+
+	for i, x := range path[:len(path)-1] {
+		sum += distance(x, path[i+1])
+	}
+
+	return sum
 }
 
 func filterNodes(remove []*Node, from []*Node) []*Node {
-	ret := make([]*Node, 0, len(from)-len(remove))
+	ret := make([]*Node, 0, len(from))
 
 	for _, f := range from {
 		found := false
